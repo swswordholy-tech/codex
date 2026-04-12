@@ -6,6 +6,7 @@ use super::*;
 pub(crate) struct Session {
     pub(crate) conversation_id: ThreadId,
     pub(super) tx_event: Sender<Event>,
+    pub(super) tx_sub: Sender<Submission>,
     pub(super) agent_status: watch::Sender<AgentStatus>,
     pub(super) out_of_band_elicitation_paused: watch::Sender<bool>,
     pub(super) state: Mutex<SessionState>,
@@ -214,6 +215,7 @@ impl Session {
         models_manager: Arc<ModelsManager>,
         exec_policy: Arc<ExecPolicyManager>,
         tx_event: Sender<Event>,
+        tx_sub: Sender<Submission>,
         agent_status: watch::Sender<AgentStatus>,
         initial_history: InitialHistory,
         session_source: SessionSource,
@@ -692,6 +694,7 @@ impl Session {
         let sess = Arc::new(Session {
             conversation_id,
             tx_event: tx_event.clone(),
+            tx_sub: tx_sub.clone(),
             agent_status,
             out_of_band_elicitation_paused,
             state: Mutex::new(state),
@@ -770,6 +773,7 @@ impl Session {
             INITIAL_SUBMIT_ID.to_owned(),
             tx_event.clone(),
             session_configuration.sandbox_policy.get().clone(),
+            Some(tx_sub.clone()),
             config.codex_home.to_path_buf(),
             codex_apps_tools_cache_key(auth),
             tool_plugin_provenance,

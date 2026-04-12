@@ -633,6 +633,7 @@ impl Codex {
             models_manager.clone(),
             exec_policy,
             tx_event.clone(),
+            tx_sub.clone(),
             agent_status_tx.clone(),
             conversation_history,
             session_source_clone,
@@ -1105,6 +1106,10 @@ impl Session {
 
     pub(crate) fn get_tx_event(&self) -> Sender<Event> {
         self.tx_event.clone()
+    }
+
+    pub(crate) fn get_tx_sub(&self) -> Sender<Submission> {
+        self.tx_sub.clone()
     }
 
     pub(crate) fn state_db(&self) -> Option<state_db::StateDbHandle> {

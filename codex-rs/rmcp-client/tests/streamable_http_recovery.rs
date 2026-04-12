@@ -94,6 +94,7 @@ async fn create_client(base_url: &str) -> anyhow::Result<RmcpClient> {
                 }
                 .boxed()
             }),
+            None,
         )
         .await?;
 

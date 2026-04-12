@@ -6902,6 +6902,9 @@ impl ChatWidget {
                             self.on_user_message_event(event);
                         }
                     } else if self.last_rendered_user_message_event.as_ref() != Some(&rendered) {
+                        self.notify(Notification::IncomingUserMessage {
+                            message: event.message.clone(),
+                        });
                         self.on_user_message_event(event);
                     }
                 }
@@ -10780,16 +10783,36 @@ impl Renderable for ChatWidget {
 
 #[derive(Debug)]
 enum Notification {
-    AgentTurnComplete { response: String },
-    ExecApprovalRequested { command: String },
-    EditApprovalRequested { cwd: PathBuf, changes: Vec<PathBuf> },
-    ElicitationRequested { server_name: String },
-    PlanModePrompt { title: String },
+    #[allow(dead_code)]
+    IncomingUserMessage {
+        message: String,
+    },
+    AgentTurnComplete {
+        response: String,
+    },
+    ExecApprovalRequested {
+        command: String,
+    },
+    EditApprovalRequested {
+        cwd: PathBuf,
+        changes: Vec<PathBuf>,
+    },
+    ElicitationRequested {
+        server_name: String,
+    },
+    PlanModePrompt {
+        title: String,
+    },
 }
 
 impl Notification {
     fn display(&self) -> String {
         match self {
+            Notification::IncomingUserMessage { message } => Notification::agent_turn_preview(
+                message,
+            )
+            .map(|preview| format!("Incoming message: {preview}"))
+            .unwrap_or_else(|| "Incoming message".to_string()),
             Notification::AgentTurnComplete { response } => {
                 Notification::agent_turn_preview(response)
                     .unwrap_or_else(|| "Agent turn complete".to_string())
@@ -10822,6 +10845,7 @@ impl Notification {
 
     fn type_name(&self) -> &str {
         match self {
+            Notification::IncomingUserMessage { .. } => "incoming-user-message",
             Notification::AgentTurnComplete { .. } => "agent-turn-complete",
             Notification::ExecApprovalRequested { .. }
             | Notification::EditApprovalRequested { .. }
@@ -10832,6 +10856,7 @@ impl Notification {
 
     fn priority(&self) -> u8 {
         match self {
+            Notification::IncomingUserMessage { .. } => 1,
             Notification::AgentTurnComplete { .. } => 0,
             Notification::ExecApprovalRequested { .. }
             | Notification::EditApprovalRequested { .. }

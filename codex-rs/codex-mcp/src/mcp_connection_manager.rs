@@ -20,6 +20,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use crate::McpAuthStatusEntry;
+use crate::custom_notifications::submission_for_custom_notification;
 use crate::mcp::CODEX_APPS_MCP_SERVER_NAME;
 use crate::mcp::McpConfig;
 use crate::mcp::ToolPluginProvenance;
@@ -49,6 +50,8 @@ use codex_protocol::protocol::McpStartupFailure;
 use codex_protocol::protocol::McpStartupStatus;
 use codex_protocol::protocol::McpStartupUpdateEvent;
 use codex_protocol::protocol::SandboxPolicy;
+use codex_protocol::protocol::Submission;
+use codex_rmcp_client::CustomNotificationCallback;
 use codex_rmcp_client::ElicitationResponse;
 use codex_rmcp_client::LocalStdioServerLauncher;
 use codex_rmcp_client::RmcpClient;
@@ -490,6 +493,7 @@ impl AsyncManagedClient {
         store_mode: OAuthCredentialsStoreMode,
         cancel_token: CancellationToken,
         tx_event: Sender<Event>,
+        tx_sub: Option<Sender<Submission>>,
         elicitation_requests: ElicitationRequestManager,
         codex_apps_tools_cache_context: Option<CodexAppsToolsCacheContext>,
         tool_plugin_provenance: Arc<ToolPluginProvenance>,
@@ -521,6 +525,7 @@ impl AsyncManagedClient {
                         tool_timeout: config.tool_timeout_sec.unwrap_or(DEFAULT_TOOL_TIMEOUT),
                         tool_filter: startup_tool_filter,
                         tx_event,
+                        tx_sub,
                         elicitation_requests,
                         codex_apps_tools_cache_context,
                     },
@@ -710,6 +715,7 @@ impl McpConnectionManager {
         submit_id: String,
         tx_event: Sender<Event>,
         initial_sandbox_policy: SandboxPolicy,
+        tx_sub: Option<Sender<Submission>>,
         codex_home: PathBuf,
         codex_apps_tools_cache_key: CodexAppsToolsCacheKey,
         tool_plugin_provenance: ToolPluginProvenance,
@@ -751,6 +757,7 @@ impl McpConnectionManager {
                 store_mode,
                 cancel_token.clone(),
                 tx_event.clone(),
+                tx_sub.clone(),
                 elicitation_requests.clone(),
                 codex_apps_tools_cache_context,
                 Arc::clone(&tool_plugin_provenance),
@@ -1383,6 +1390,30 @@ fn elicitation_capability_for_server(_server_name: &str) -> Option<ElicitationCa
     })
 }
 
+fn custom_notification_callback(
+    server_name: String,
+    tx_sub: Option<Sender<Submission>>,
+) -> Option<CustomNotificationCallback> {
+    let tx_sub = tx_sub?;
+    Some(Box::new(move |notification| {
+        let tx_sub = tx_sub.clone();
+        let server_name = server_name.clone();
+        async move {
+            let Some(submission) = submission_for_custom_notification(&server_name, notification)
+            else {
+                return;
+            };
+            if let Err(err) = tx_sub.send(submission).await {
+                warn!(
+                    server_name = server_name,
+                    "failed to forward MCP custom notification into Codex session: {err}"
+                );
+            }
+        }
+        .boxed()
+    }))
+}
+
 async fn start_server_task(
     server_name: String,
     client: Arc<RmcpClient>,
@@ -1393,6 +1424,7 @@ async fn start_server_task(
         tool_timeout,
         tool_filter,
         tx_event,
+        tx_sub,
         elicitation_requests,
         codex_apps_tools_cache_context,
     } = params;
@@ -1419,9 +1451,16 @@ async fn start_server_task(
     };
 
     let send_elicitation = elicitation_requests.make_sender(server_name.clone(), tx_event);
+    let custom_notification_callback =
+        custom_notification_callback(server_name.clone(), tx_sub.clone());
 
     let initialize_result = client
-        .initialize(params, startup_timeout, send_elicitation)
+        .initialize(
+            params,
+            startup_timeout,
+            send_elicitation,
+            custom_notification_callback,
+        )
         .await
         .map_err(StartupOutcomeError::from)?;
 
@@ -1478,6 +1517,7 @@ struct StartServerTaskParams {
     tool_timeout: Duration,
     tool_filter: ToolFilter,
     tx_event: Sender<Event>,
+    tx_sub: Option<Sender<Submission>>,
     elicitation_requests: ElicitationRequestManager,
     codex_apps_tools_cache_context: Option<CodexAppsToolsCacheContext>,
 }

@@ -6,6 +6,7 @@ use rmcp::model::CancelledNotificationParam;
 use rmcp::model::ClientInfo;
 use rmcp::model::CreateElicitationRequestParams;
 use rmcp::model::CreateElicitationResult;
+use rmcp::model::CustomNotification;
 use rmcp::model::LoggingLevel;
 use rmcp::model::LoggingMessageNotificationParam;
 use rmcp::model::ProgressNotificationParam;
@@ -18,18 +19,25 @@ use tracing::info;
 use tracing::warn;
 
 use crate::rmcp_client::SendElicitation;
+use crate::rmcp_client::CustomNotificationCallback;
 
 #[derive(Clone)]
 pub(crate) struct LoggingClientHandler {
     client_info: ClientInfo,
     send_elicitation: Arc<SendElicitation>,
+    custom_notification_callback: Option<Arc<CustomNotificationCallback>>,
 }
 
 impl LoggingClientHandler {
-    pub(crate) fn new(client_info: ClientInfo, send_elicitation: SendElicitation) -> Self {
+    pub(crate) fn new(
+        client_info: ClientInfo,
+        send_elicitation: SendElicitation,
+        custom_notification_callback: Option<CustomNotificationCallback>,
+    ) -> Self {
         Self {
             client_info,
             send_elicitation: Arc::new(send_elicitation),
+            custom_notification_callback: custom_notification_callback.map(Arc::new),
         }
     }
 }
@@ -132,5 +140,23 @@ impl ClientHandler for LoggingClientHandler {
                 );
             }
         }
+    }
+
+    async fn on_custom_notification(
+        &self,
+        notification: CustomNotification,
+        _context: NotificationContext<RoleClient>,
+    ) {
+        if let Some(callback) = &self.custom_notification_callback {
+            callback(notification).await;
+            return;
+        }
+
+        let CustomNotification { method, params, .. } = notification;
+        debug!(
+            method,
+            params = ?params,
+            "unhandled MCP custom notification"
+        );
     }
 }

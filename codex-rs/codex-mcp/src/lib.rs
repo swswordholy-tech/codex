@@ -1,3 +1,4 @@
+mod custom_notifications;
 pub(crate) mod mcp;
 pub(crate) mod mcp_connection_manager;
 pub(crate) mod mcp_tool_names;

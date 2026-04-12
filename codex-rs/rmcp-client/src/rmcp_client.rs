@@ -77,6 +77,9 @@ use crate::utils::apply_default_headers;
 use crate::utils::build_default_headers;
 use codex_config::types::OAuthCredentialsStoreMode;
 
+pub type CustomNotificationCallback =
+    Box<dyn Fn(CustomNotification) -> BoxFuture<'static, ()> + Send + Sync>;
+
 const EVENT_STREAM_MIME_TYPE: &str = "text/event-stream";
 const JSON_MIME_TYPE: &str = "application/json";
 const HEADER_LAST_EVENT_ID: &str = "Last-Event-Id";
@@ -562,11 +565,13 @@ impl RmcpClient {
         params: InitializeRequestParams,
         timeout: Option<Duration>,
         send_elicitation: SendElicitation,
+        custom_notification_callback: Option<CustomNotificationCallback>,
     ) -> Result<InitializeResult> {
         let client_service = ElicitationClientService::new(
             params.clone(),
             send_elicitation,
             self.elicitation_pause_state.clone(),
+            custom_notification_callback,
         );
         let pending_transport = {
             let mut guard = self.state.lock().await;
